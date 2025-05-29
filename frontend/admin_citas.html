@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Administración de Citas - Taller de Motos</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+    .container { max-width: 1000px; margin: 0 auto; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    h1 { text-align: center; color: #333; }
+    .cita-card {
+      background: #fafafa; border-left: 4px solid #28a745; padding: 15px; margin: 10px 0; border-radius: 6px;
+    }
+    .cita-card p { margin: 5px 0; }
+    .cita-card textarea {
+      width: 100%; min-height: 60px; margin-top: 5px; border-radius: 4px; padding: 6px;
+      border: 1px solid #ccc; font-size: 0.95rem;
+    }
+    .btn-group { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      padding: 6px 12px; border: none; border-radius: 4px;
+      cursor: pointer; font-weight: bold;
+    }
+    .save-btn { background-color: #007bff; color: white; }
+    .complete-btn { background-color: #28a745; color: white; }
+    .back-button {
+      display: inline-block; margin-top: 20px; padding: 10px 20px;
+      background-color: #6c757d; color: white; text-decoration: none;
+      border-radius: 6px; font-weight: bold;
+    }
+    .back-button:hover { background-color: #5a6268; }
+    .error, .empty { text-align: center; color: #666; margin: 20px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🛠️ Administración de Citas</h1>
+    <div id="citas-container">
+      <p class="empty">Cargando citas...</p>
+    </div>
+    <a href="dashboard.html" class="back-button">← Volver al Dashboard</a>
+  </div>
+
+  <script src="script.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const container = document.getElementById('citas-container');
+      container.innerHTML = '<p class="empty">Cargando citas...</p>';
+
+      const endpoint = 'http://127.0.0.1:8000/api/citas/';
+
+      try {
+        const res = await fetchWithAuth(endpoint, { method: 'GET' });
+        const data = await res.json();
+        container.innerHTML = '';
+
+        if (!res.ok) {
+          container.innerHTML = `<p class="error">Error: ${data.detail || res.statusText}</p>`;
+          return;
+        }
+
+        if (data.length === 0) {
+          container.innerHTML = '<p class="empty">No hay citas registradas.</p>';
+        } else {
+          data.forEach(cita => {
+            const card = document.createElement('div');
+            card.className = 'cita-card';
+            card.innerHTML = `
+              <p><strong>ID:</strong> ${cita.id}</p>
+              <p><strong>Cliente:</strong> ${cita.moto_modelo}</p>
+              <p><strong>Servicio:</strong> ${cita.servicio_nombre}</p>
+              <p><strong>Fecha:</strong> ${new Date(cita.fecha).toLocaleString()}</p>
+              <p><strong>Estado actual:</strong> ${cita.estado}</p>
+              <label><strong>Informe:</strong></label>
+              <textarea id="informe-${cita.id}" placeholder="Escribe el informe...">${cita.informe || ''}</textarea>
+              <div class="btn-group">
+                <button class="btn complete-btn" onclick="marcarCompletado(${cita.id})">✅ Marcar como Completado</button>
+                <button class="btn save-btn" onclick="guardarInforme(${cita.id})">💾 Guardar Informe</button>
+              </div>
+            `;
+            container.appendChild(card);
+          });
+        }
+      } catch (err) {
+        console.error('Error al cargar citas:', err);
+        container.innerHTML = '<p class="error">Error de conexión con el servidor.</p>';
+      }
+    });
+
+    async function guardarInforme(id) {
+      const informe = document.getElementById(`informe-${id}`).value.trim();
+      if (!informe) return alert("El informe no puede estar vacío.");
+
+      try {
+        const res = await fetchWithAuth(`http://127.0.0.1:8000/api/citas/${id}/`, {
+          method: 'PATCH',
+          headers: {
+            ...getAuthHeaders(),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ informe })
+        });
+
+        if (res.ok) {
+          alert("✅ Informe guardado.");
+        } else {
+          const data = await res.json();
+          alert(`Error: ${data.error || 'No se pudo guardar el informe.'}`);
+        }
+      } catch {
+        alert("Error de conexión al guardar el informe.");
+      }
+    }
+
+    async function marcarCompletado(id) {
+      if (!confirm("¿Marcar esta cita como completada?")) return;
+
+      try {
+        const res = await fetchWithAuth(`http://127.0.0.1:8000/api/citas/${id}/`, {
+          method: 'PATCH',
+          headers: {
+            ...getAuthHeaders(),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ estado: "completado" })
+        });
+
+        if (res.ok) {
+          alert("✅ Estado actualizado a 'completado'.");
+          location.reload();
+        } else {
+          const data = await res.json();
+          alert(`Error: ${data.error || 'No se pudo actualizar el estado.'}`);
+        }
+      } catch {
+        alert("Error de conexión al marcar como completado.");
+      }
+    }
+  </script>
+</body>
+</html>

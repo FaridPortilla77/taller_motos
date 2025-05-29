@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard - Taller de Motos</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f0f2f5;
+      margin: 0;
+      padding: 0;
+    }
+
+    .navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #ffffff;
+      padding: 15px 30px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+
+    .navbar h1 {
+      font-size: 1.25rem;
+      color: #333;
+      margin: 0;
+    }
+
+    .logout {
+      background-color: #dc3545;
+      color: white;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+
+    .logout:hover {
+      background-color: #c82333;
+    }
+
+    .dashboard {
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 20px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .section {
+      margin-top: 30px;
+    }
+
+    .section h2 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+
+    .mis-citas-button {
+      background-color: #007bff;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    .mis-citas-button:hover {
+      background-color: #0056b3;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 8px;
+      margin: 8px 0;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 1rem;
+    }
+
+    button.primary {
+      background-color: #28a745;
+      color: white;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    button.primary:hover {
+      background-color: #218838;
+    }
+
+    /* Tarjetas de citas */
+    .cita-card {
+      border: 1px solid #ccc;
+      border-left: 4px solid #007bff;
+      background-color: #f9f9f9;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .cita-card p {
+      margin: 5px 0;
+      font-size: 0.95rem;
+      color: #333;
+    }
+
+    @media (max-width: 600px) {
+      .dashboard { margin: 10px; padding: 10px; }
+      .navbar { flex-direction: column; align-items: flex-start; }
+      .logout { width: 100%; margin-top: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="navbar">
+    <h1>Bienvenido, <span id="username"></span> 👋 <br><small id="email"></small></h1>
+    <button class="logout" onclick="logout()">Cerrar sesión</button>
+  </div>
+
+  <div class="dashboard">
+    <div class="section">
+      <button class="mis-citas-button" onclick="window.location.href='mis_citas.html'">📅 Mis Citas</button>
+    </div>
+
+    <div class="section" id="admin-section" style="display: none;">
+      <button class="mis-citas-button" onclick="window.location.href='admin_citas.html'">🛠️ Administración</button>
+    </div>
+
+    <div class="section" id="info-cards">
+      <h2>Últimas Citas</h2>
+      <p id="loading-citas">Cargando citas...</p>
+    </div>
+
+    <div class="section">
+      <h2>Agendar una nueva cita</h2>
+      <form id="citaLibreForm">
+        <label for="servicio_nombre">Servicio solicitado:</label>
+        <input type="text" id="servicio_nombre" required />
+
+        <label for="moto_marca">Marca de la moto:</label>
+        <input type="text" id="moto_marca" required />
+
+        <label for="moto_modelo">Modelo de la moto:</label>
+        <input type="text" id="moto_modelo" required />
+
+        <label for="moto_anio">Año de la moto:</label>
+        <input type="number" id="moto_anio" required />
+
+        <label for="hora">Hora:</label>
+        <input type="time" id="hora" required />
+
+        <label for="fecha">Fecha:</label>
+        <input type="date" id="fecha" required />
+
+        <button type="submit" class="primary">Agendar Cita</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const username = localStorage.getItem('username');
+      if (!username) return window.location.href = 'login.html';
+
+      document.getElementById('username').textContent = username;
+      document.getElementById('email').textContent = localStorage.getItem('email') || '';
+
+      const isAdmin = localStorage.getItem("is_staff") === "true";
+      if (isAdmin) {
+        document.getElementById('admin-section').style.display = "block";
+      }
+
+      const infoCards = document.getElementById('info-cards');
+      const loadingCitas = document.getElementById('loading-citas');
+
+      async function fetchWithRetry(url, options) {
+        let res = await fetch(url, options);
+        if (res.status === 401) {
+          const refreshed = await refreshAccessToken();
+          if (!refreshed) return res;
+          options.headers = getAuthHeaders();
+          res = await fetch(url, options);
+        }
+        return res;
+      }
+
+      // Cargar últimas 3 citas
+      try {
+        const res = await fetchWithRetry('http://127.0.0.1:8000/api/mis-citas/', {
+          headers: getAuthHeaders()
+        });
+        const data = await res.json();
+        loadingCitas.remove();
+
+        if (res.ok) {
+          if (!data.length) infoCards.innerHTML += '<p>No tienes citas recientes.</p>';
+          else data.slice(0, 3).forEach(cita => {
+            const card = document.createElement('div'); 
+            card.className = 'cita-card';
+            card.innerHTML = `
+              <p><strong>🛠️ Servicio:</strong> ${cita.servicio_nombre}</p>
+              <p><strong>🏍️ Moto:</strong> ${cita.moto_modelo}</p>
+              <p><strong>📆 Fecha:</strong> ${new Date(cita.fecha).toLocaleString()}</p>
+              <p><strong>📄 Informe:</strong> ${cita.informe || 'Pendiente'}</p>
+              <p><strong>🔖 Estado:</strong> ${cita.estado}</p>
+            `;
+            infoCards.appendChild(card);
+          });
+        } else {
+          infoCards.innerHTML += `<p>Error al cargar citas: ${data.error || 'Error desconocido'}</p>`;
+        }
+      } catch (err) {
+        console.error(err);
+        loadingCitas.remove();
+        infoCards.innerHTML += '<p>Error de conexión al cargar citas.</p>';
+      }
+
+      // Agendar cita personalizada
+      document.getElementById('citaLibreForm').addEventListener('submit', async e => {
+        e.preventDefault();
+
+        const servicio_nombre = document.getElementById('servicio_nombre').value;
+        const moto_marca = document.getElementById('moto_marca').value;
+        const moto_modelo = document.getElementById('moto_modelo').value;
+        const moto_anio = document.getElementById('moto_anio').value;
+        const fecha = document.getElementById('fecha').value;
+        const hora = document.getElementById('hora').value;
+
+        const payload = {
+          servicio_nombre,
+          moto_marca,
+          moto_modelo,
+          moto_anio,
+          fecha: `${fecha}T${hora}`,
+          hora
+        };
+
+        try {
+          const res = await fetchWithRetry('http://127.0.0.1:8000/api/agendar-cita-libre/', {
+            method: 'POST',
+            headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+            alert('✅ Cita agendada con éxito.');
+            document.getElementById('citaLibreForm').reset();
+            window.location.reload();
+          } else {
+            alert(`Error: ${data.error || 'No se pudo agendar la cita.'}`);
+          }
+        } catch {
+          alert('Error de conexión al agendar cita.');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
